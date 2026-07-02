@@ -815,6 +815,7 @@ def _do_run(args, logger, render_plan_errors, experiment_file_override=None):
         workspace=config.workspace,
         specification_file=getattr(args, "specification_file", None),
         rendered_stacks=rendered_paths,
+        base_dir=args.base_dir,
         dry_run=config.dry_run,
         verbose=config.verbose,
         non_admin=getattr(args, "non_admin", False),

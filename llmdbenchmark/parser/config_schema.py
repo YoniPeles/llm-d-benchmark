@@ -402,6 +402,7 @@ class HarnessConfig(BaseModel):
     inferencePerf: InferencePerfConfig
     namespace: str | None = None
     pvcSize: str | None = None
+    priorityClassName: str | None = None
 
 
 # ---------------------------------------------------------------------------

@@ -14,9 +14,19 @@ spec:
     securityContext:
       runAsUser: {{ dataAccess.runAsUser }}
     command: ["rsync", "--daemon", "--no-detach", "--port={{ dataAccess.rsyncPort }}", "--log-file=/dev/stdout"]
+    resources:
+      limits:
+        cpu: "{{ dataAccess.resources.cpu | default('500m') }}"
+        memory: {{ dataAccess.resources.memory | default('512Mi') }}
+      requests:
+        cpu: "{{ dataAccess.resources.cpu | default('500m') }}"
+        memory: {{ dataAccess.resources.memory | default('512Mi') }}
     volumeMounts:
     - name: requests
       mountPath: /requests
+{% if dataAccess.priorityClassName is defined and dataAccess.priorityClassName %}
+  priorityClassName: {{ dataAccess.priorityClassName }}
+{% endif %}
 {% if dataAccess.nodeSelector is defined and dataAccess.nodeSelector %}
   nodeSelector:
 {% for key, value in dataAccess.nodeSelector.items() %}

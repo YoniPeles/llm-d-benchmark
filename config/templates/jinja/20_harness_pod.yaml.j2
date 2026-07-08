@@ -158,6 +158,9 @@ spec:
 {% if harness.serviceAccount is defined and harness.serviceAccount %}
   serviceAccountName: {{ harness.serviceAccount }}
 {% endif %}
+{% if harness.priorityClassName is defined and harness.priorityClassName %}
+  priorityClassName: {{ harness.priorityClassName }}
+{% endif %}
 {% if harness.nodeSelector is defined and harness.nodeSelector %}
   nodeSelector:
 {% for key, value in harness.nodeSelector.items() %}

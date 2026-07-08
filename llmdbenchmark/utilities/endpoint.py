@@ -5,6 +5,7 @@ smoketest step and the run phase can reuse the same logic.
 """
 
 import json
+import os
 import random
 import string
 import time
@@ -81,6 +82,13 @@ def _build_overrides(
     )
     if sa_name:
         overrides.setdefault("spec", {})["serviceAccountName"] = sa_name
+
+    # Pod-level only (never containers[], which would drop the run --image and
+    # fail with "containers[] without image"). A scheduler that rejects
+    # unprioritized pods (run.ai) also rejects the ephemeral curl pod otherwise.
+    priority_class = os.environ.get("LLMDBENCH_PRIORITY_CLASS", "")
+    if priority_class:
+        overrides.setdefault("spec", {})["priorityClassName"] = priority_class
 
     if overrides:
         return ["--overrides", f"'{json.dumps(overrides)}'"]
@@ -663,6 +671,20 @@ def test_model_serving(
 
     Returns None on success, or an error string describing the failure.
     """
+    # Escape hatch for run-only against a known-good in-cluster endpoint: the
+    # ephemeral-curl smoketest is the single most fragile step (image reachability,
+    # scheduler admission, RBAC), and a genuinely broken endpoint fails loudly in
+    # the harness anyway. Set LLMDBENCH_SKIP_ENDPOINT_VERIFY=1 to bypass it.
+    if os.environ.get("LLMDBENCH_SKIP_ENDPOINT_VERIFY", "").lower() in (
+        "1",
+        "true",
+        "yes",
+    ):
+        cmd.logger.log_info(
+            "LLMDBENCH_SKIP_ENDPOINT_VERIFY set — skipping endpoint smoketest."
+        )
+        return None
+
     protocol = "https" if str(port) == "443" else "http"
     prefix = _normalize_url_prefix(url_path_prefix)
     url = f"{protocol}://{host}:{port}{prefix}/v1/models"
@@ -722,7 +744,9 @@ def test_model_serving(
             )
 
     override_args = _build_overrides(plan_config, service_account=service_account)
-    curl_image = "quay.io/fedora/fedora"
+    # Offline/air-gapped clusters can't reach quay.io; point this at a mirrored
+    # image (or any image with curl, e.g. the benchpress image).
+    curl_image = os.environ.get("LLMDBENCH_CURL_IMAGE", "quay.io/fedora/fedora")
     last_error: str | None = None
 
     for attempt in range(1, max_retries + 1):

@@ -8,22 +8,46 @@ import re
 from dataclasses import dataclass
 from typing import Any, Protocol, TYPE_CHECKING
 
-from planner.capacity_planner import (
-    KVCacheDetail,
-    allocatable_kv_cache_memory,
-    available_gpu_memory,
-    estimate_vllm_activation_memory,
-    estimate_vllm_cuda_graph_memory,
-    estimate_vllm_non_torch_memory,
-    find_possible_tp,
-    get_model_config_from_hf,
-    get_text_config,
-    gpus_required,
-    max_concurrent_requests,
-    max_context_len,
-    model_memory_req,
-    model_total_params,
-)
+# `planner` pulls in torch (~2-3 GB). Capacity planning is a standup-phase
+# feature (run_capacity_planner, called only from step_03); the run-only
+# benchmark flow never invokes it. Import lazily so a slim, torch-free
+# orchestrator image can still import this module (and thus the CLI) — every
+# symbol below is used only inside functions, so absence surfaces as a clear
+# error there rather than an import-time crash for flows that never plan.
+try:
+    from planner.capacity_planner import (
+        KVCacheDetail,
+        allocatable_kv_cache_memory,
+        available_gpu_memory,
+        estimate_vllm_activation_memory,
+        estimate_vllm_cuda_graph_memory,
+        estimate_vllm_non_torch_memory,
+        find_possible_tp,
+        get_model_config_from_hf,
+        get_text_config,
+        gpus_required,
+        max_concurrent_requests,
+        max_context_len,
+        model_memory_req,
+        model_total_params,
+    )
+except ModuleNotFoundError as _planner_exc:  # pragma: no cover - env-dependent
+    _PLANNER_IMPORT_ERROR = _planner_exc
+
+    def _planner_missing(*_args, **_kwargs):
+        raise ModuleNotFoundError(
+            "capacity planning requires the 'planner' package (and torch), which "
+            "is absent in the slim orchestrator image; run capacity planning from "
+            "the full harness image"
+        ) from _PLANNER_IMPORT_ERROR
+
+    KVCacheDetail = None
+    allocatable_kv_cache_memory = available_gpu_memory = _planner_missing
+    estimate_vllm_activation_memory = estimate_vllm_cuda_graph_memory = _planner_missing
+    estimate_vllm_non_torch_memory = find_possible_tp = _planner_missing
+    get_model_config_from_hf = get_text_config = _planner_missing
+    gpus_required = max_concurrent_requests = max_context_len = _planner_missing
+    model_memory_req = model_total_params = _planner_missing
 
 if TYPE_CHECKING:
     from transformers import AutoConfig

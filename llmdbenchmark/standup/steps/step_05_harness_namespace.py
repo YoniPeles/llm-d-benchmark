@@ -174,7 +174,20 @@ class HarnessNamespaceStep(Step):
         harness_ns: str,
         errors: list,
     ):
-        """Create the harness namespace if it doesn't exist."""
+        """Create the harness namespace if it doesn't exist.
+
+        Get-then-create: in the run-only flow the harness namespace is the
+        caller's own namespace and always pre-exists, while a namespace-scoped
+        user is Forbidden from creating (or even applying to) Namespace objects
+        cluster-wide. So if it already exists, skip creation entirely rather
+        than letting the Forbidden on ``apply`` mask genuine RBAC breakage.
+        """
+        get_result = cmd.kube(
+            "get", "namespace", harness_ns, check=False
+        )
+        if get_result.success:
+            return
+
         ns_yaml = f"""apiVersion: v1
 kind: Namespace
 metadata:

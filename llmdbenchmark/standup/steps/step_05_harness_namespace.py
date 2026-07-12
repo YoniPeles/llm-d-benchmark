@@ -121,6 +121,26 @@ class HarnessNamespaceStep(Step):
         pod_yaml = self._find_rendered_yaml(context, "06_pod_access_to_harness_data")
         if pod_yaml:
             result = cmd.kube("apply", "-f", str(pod_yaml))
+            # A data-access pod from a prior run may already exist with a spec
+            # that differs immutably from the current one -- most commonly a
+            # different QoS class (an older run without resources is BestEffort;
+            # once we set resources/priorityClass it becomes Burstable/Guaranteed,
+            # and "Pod QoS is immutable"). Pods reject in-place patches of these
+            # fields, so `apply` fails. Delete the stale pod and recreate it so the
+            # current spec (resources, priorityClass, image) takes effect. The pod
+            # is ephemeral standup infra, recreated every run, so this is safe.
+            if not result.success and self._is_immutable_pod_conflict(result.stderr):
+                context.logger.log_info(
+                    "    Existing data-access pod differs immutably "
+                    "(e.g. QoS change); recreating it"
+                )
+                cmd.kube(
+                    "delete", "pod",
+                    "-l", "role=llm-d-benchmark-data-access",
+                    "-n", harness_ns,
+                    "--ignore-not-found", "--wait",
+                )
+                result = cmd.kube("apply", "-f", str(pod_yaml))
             if not result.success:
                 errors.append(f"Failed to create data access pod: {result.stderr}")
 
@@ -166,6 +186,16 @@ class HarnessNamespaceStep(Step):
             success=True,
             message=f"Harness namespace prepared (ns={harness_ns})",
         )
+
+    @staticmethod
+    def _is_immutable_pod_conflict(stderr: str) -> bool:
+        """True if a `kubectl apply` on the data-access pod failed because the
+        existing pod differs in an immutable field (QoS class, or any spec field
+        other than the handful pods allow to change). Detects the two messages
+        the API server returns for that case so we can delete-and-recreate rather
+        than surface a confusing failure."""
+        s = stderr or ""
+        return "QoS is immutable" in s or "may not change fields other than" in s
 
     def _create_harness_namespace(
         self,
